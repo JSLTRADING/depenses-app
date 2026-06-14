@@ -15,17 +15,13 @@
     body { background: #F8F6F3; font-family: -apple-system, 'Inter', sans-serif; }
     #root { max-width: 480px; margin: 0 auto; min-height: 100vh; }
     @keyframes pulse {
-      0% { box-shadow: 0 0 0 0 rgba(224,112,112,0.4); }
-      70% { box-shadow: 0 0 0 14px rgba(224,112,112,0); }
-      100% { box-shadow: 0 0 0 0 rgba(224,112,112,0); }
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
+      0% { box-shadow: 0 0 0 0 rgba(161,96,125,0.5); }
+      70% { box-shadow: 0 0 0 16px rgba(161,96,125,0); }
+      100% { box-shadow: 0 0 0 0 rgba(161,96,125,0); }
     }
     input:focus { border-color: #A1607D !important; outline: none; }
     button:active { opacity: 0.8; }
-    .pulsing { animation: pulse 1.2s infinite; }
-    .spinning { animation: spin 1s linear infinite; }
+    .pulsing { animation: pulse 1.1s infinite; }
   </style>
 </head>
 <body>
@@ -36,159 +32,156 @@
 const { useState, useRef, useCallback } = React;
 
 const CATEGORIES = [
-  { id: "alimentation", label: "Alimentation", emoji: "🛒", color: "#E8A87C" },
-  { id: "enfant",       label: "Enfant / École", emoji: "🎒", color: "#A8D8EA" },
-  { id: "transport",    label: "Transport",       emoji: "🚗", color: "#7EC8C8" },
-  { id: "coaching",     label: "Coaching / Pro",  emoji: "💼", color: "#A1607D" },
-  { id: "maison",       label: "Maison / Jardin", emoji: "🏡", color: "#B5D5C5" },
-  { id: "mode",         label: "Mode / Vinted",   emoji: "👗", color: "#D4A5C9" },
-  { id: "loisirs",      label: "Loisirs",          emoji: "🎮", color: "#F7C59F" },
-  { id: "sante",        label: "Santé",            emoji: "💊", color: "#C9E4CA" },
-  { id: "autres",       label: "Autres",           emoji: "📦", color: "#D0CDD7" },
+  { id: "alimentation", label: "Alimentation",   emoji: "🛒", color: "#E8A87C" },
+  { id: "enfant",       label: "Enfant / École",  emoji: "🎒", color: "#A8D8EA" },
+  { id: "transport",    label: "Transport",        emoji: "🚗", color: "#7EC8C8" },
+  { id: "coaching",     label: "Coaching / Pro",   emoji: "💼", color: "#A1607D" },
+  { id: "maison",       label: "Maison / Jardin",  emoji: "🏡", color: "#B5D5C5" },
+  { id: "mode",         label: "Mode / Vinted",    emoji: "👗", color: "#D4A5C9" },
+  { id: "loisirs",      label: "Loisirs",           emoji: "🎮", color: "#F7C59F" },
+  { id: "sante",        label: "Santé",             emoji: "💊", color: "#C9E4CA" },
+  { id: "autres",       label: "Autres",            emoji: "📦", color: "#D0CDD7" },
 ];
 
-const BUDGET_MENSUEL = 3000;
+// Mots-clés pour catégorisation automatique locale
+const CAT_KEYWORDS = {
+  alimentation: ["monoprix","franprix","lidl","aldi","carrefour","leclerc","intermarché","super u","casino","courses","épicerie","boulangerie","boucherie","marché","picard","biocoop","naturalia","sushi","restaurant","café","bistrot","mcdo","mcdonald","burger","pizza","kebab","déjeuner","diner","petit-déjeuner","repas","nourriture","manger"],
+  enfant: ["école","crèche","nourrice","babysitter","jouet","jeux","kid","enfant","maternelle","primaire","cantine","garderie","activité","dessin","sport enfant","zara kids","jacadi","dpam","kiabi enfant"],
+  transport: ["navigo","ratp","sncf","train","métro","bus","tram","taxi","uber","bolt","essence","carburant","gazole","total","esso","bp","shell","parking","péage","autoroute","vélib","trottin"],
+  coaching: ["formation","coaching","cabinet","bilan","cpf","linkedin","matériel bureau","fournitures","pro","professionnel","abonnement pro","logiciel"],
+  maison: ["loyer","edf","engie","eau","électricité","gaz","internet","sfr","orange","free","bouygues","ikea","leroy","castorama","bricolage","jardinage","entretien","ménage","réparation","plombier","électricien","maison","jardin"],
+  mode: ["vêtement","chaussure","sac","zara","h&m","mango","shein","asos","primark","balenciaga","louboutin","vinted","mode","accessoire","bijou"],
+  loisirs: ["cinéma","théâtre","concert","musée","netflix","disney","spotify","jeux vidéo","livre","amazon","fnac","sport","fitness","salle","abonnement","vacances","voyage","hôtel","airbnb","restaurant","bar","sortie","loisir"],
+  sante: ["pharmacie","médecin","docteur","dentiste","kiné","ophtalmo","mutuelle","ordonnance","médicament","santé","clinique","hôpital","infirmier","ostéo","psy"],
+};
+
+const guessCategorie = (text) => {
+  const t = text.toLowerCase();
+  for (const [cat, keywords] of Object.entries(CAT_KEYWORDS)) {
+    if (keywords.some(k => t.includes(k))) return cat;
+  }
+  return "autres";
+};
+
+// Extraction locale : montant + marchand depuis le texte vocal
+const extraireDepense = (text) => {
+  // Montant : cherche patterns comme "25€", "25 euros", "25,50", "2.50"
+  const montantRe = /(\d+[\.,]\d+|\d+)\s*(?:€|euros?|euro)/i;
+  const match = text.match(montantRe);
+  const montant = match ? parseFloat(match[1].replace(",", ".")) : 0;
+
+  // Marchand : mot(s) après "chez" / "à" / "au" / "chez" ou avant le montant
+  let marchand = "";
+  const chezMatch = text.match(/(?:chez|à|au|chez le?|chez la?)\s+([A-Za-zÀ-ÿ\s]+?)(?:\s+pour|\s+\d|$)/i);
+  if (chezMatch) marchand = chezMatch[1].trim();
+
+  const categorie = guessCategorie(text);
+  return { montant, marchand, categorie };
+};
 
 const fmt = (n) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(n);
 const fmtDate = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
 const getCat = (id) => CATEGORIES.find(c => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
 
 const STORAGE_KEY = "depenses_v1";
-const BUDGET_KEY = "depenses_budget_v1";
-const loadDepenses = () => {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
-  catch { return []; }
-};
-const saveDepenses = (d) => {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {}
-};
-const loadBudget = () => {
-  try { return parseFloat(localStorage.getItem(BUDGET_KEY)) || 3000; }
-  catch { return 3000; }
-};
+const BUDGET_KEY  = "depenses_budget_v1";
+const load  = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; } };
+const save  = (d) => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {} };
+const loadB = () => { try { return parseFloat(localStorage.getItem(BUDGET_KEY)) || 3000; } catch { return 3000; } };
 
 function App() {
-  const [depenses, setDepenses] = useState(loadDepenses);
-  const [budget, setBudget] = useState(loadBudget);
+  const [depenses, setDepenses]     = useState(load);
+  const [budget, setBudget]         = useState(loadB);
   const [budgetEdit, setBudgetEdit] = useState(false);
   const [budgetInput, setBudgetInput] = useState("");
-  const [view, setView] = useState("dashboard");
+  const [view, setView]             = useState("dashboard");
   const [isListening, setIsListening] = useState(false);
-  const [transcript, setTranscript] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [lastAdded, setLastAdded] = useState(null);
-  const [form, setForm] = useState({ montant: "", categorie: "alimentation", marchand: "", note: "" });
+  const [confirm, setConfirm]       = useState(null); // { transcript, montant, marchand, categorie }
+  const [form, setForm]             = useState({ montant: "", categorie: "alimentation", marchand: "", note: "" });
+  const [lastAdded, setLastAdded]   = useState(null);
   const recRef = useRef(null);
 
+  const updateDeps = useCallback((fn) => {
+    setDepenses(prev => { const next = typeof fn === "function" ? fn(prev) : fn; save(next); return next; });
+  }, []);
+
   const saveBudget = (val) => {
-    const n = parseFloat(val);
-    if (!n || n <= 0) return;
-    setBudget(n);
-    try { localStorage.setItem(BUDGET_KEY, String(n)); } catch {}
+    const n = parseFloat(val); if (!n || n <= 0) return;
+    setBudget(n); try { localStorage.setItem(BUDGET_KEY, String(n)); } catch {}
     setBudgetEdit(false);
   };
 
-  const updateDepenses = useCallback((fn) => {
-    setDepenses(prev => {
-      const next = typeof fn === "function" ? fn(prev) : fn;
-      saveDepenses(next);
-      return next;
-    });
-  }, []);
-
   const now = new Date();
-  const moisDepenses = depenses.filter(d => {
-    const dt = new Date(d.date);
-    return dt.getMonth() === now.getMonth() && dt.getFullYear() === now.getFullYear();
-  });
-  const totalMois = moisDepenses.reduce((s, d) => s + d.montant, 0);
+  const moisDeps = depenses.filter(d => { const dt = new Date(d.date); return dt.getMonth() === now.getMonth() && dt.getFullYear() === now.getFullYear(); });
+  const totalMois = moisDeps.reduce((s, d) => s + d.montant, 0);
   const pct = Math.min((totalMois / budget) * 100, 100);
   const couleur = pct > 90 ? "#E07070" : pct > 70 ? "#E8A87C" : "#7EC8C8";
+  const parCat = CATEGORIES.map(cat => ({ ...cat, total: moisDeps.filter(d => d.categorie === cat.id).reduce((s, d) => s + d.montant, 0) })).filter(c => c.total > 0).sort((a, b) => b.total - a.total);
 
-  const parCat = CATEGORIES.map(cat => ({
-    ...cat,
-    total: moisDepenses.filter(d => d.categorie === cat.id).reduce((s, d) => s + d.montant, 0)
-  })).filter(c => c.total > 0).sort((a, b) => b.total - a.total);
-
+  // === VOCAL ===
   const startListening = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { alert("Utilise Chrome pour la saisie vocale."); return; }
     const rec = new SR();
-    rec.lang = "fr-FR";
-    rec.continuous = false;
-    rec.interimResults = false;
+    rec.lang = "fr-FR"; rec.continuous = false; rec.interimResults = false;
     rec.onstart = () => setIsListening(true);
     rec.onresult = (e) => {
       const text = e.results[0][0].transcript;
-      setTranscript(text);
-      analyser(text);
+      setIsListening(false);
+      const extracted = extraireDepense(text);
+      // Ouvre le formulaire de confirmation pré-rempli
+      setConfirm({ transcript: text, ...extracted });
+      setView("saisie");
     };
     rec.onerror = rec.onend = () => setIsListening(false);
     recRef.current = rec;
     rec.start();
   };
 
-  const analyser = async (text) => {
-    setIsProcessing(true);
-    setIsListening(false);
-    try {
-      const today = new Date().toISOString().split("T")[0];
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 500,
-          messages: [{ role: "user", content: `Analyse cette dépense et réponds UNIQUEMENT en JSON valide sans markdown :
-{"montant":number,"categorie":"alimentation|enfant|transport|coaching|maison|mode|loisirs|sante|autres","marchand":"string","note":"string","date":"${today}"}
-
-Dépense : "${text}"
-Si montant non trouvé, mets 0. Marchand vide si non mentionné. Note = 3 mots max.` }]
-        })
-      });
-      const data = await res.json();
-      const txt = data.content?.[0]?.text || "";
-      const parsed = JSON.parse(txt.trim());
-      if (parsed.montant > 0) {
-        const nouvelle = { id: Date.now(), ...parsed };
-        updateDepenses(prev => [nouvelle, ...prev]);
-        setLastAdded(nouvelle);
-        setView("dashboard");
-      } else {
-        alert("Je n'ai pas pu extraire le montant. Essaie avec \"J'ai payé 25€ chez Lidl\".");
-      }
-    } catch(e) {
-      alert("Erreur lors de l'analyse. Réessaie.");
-    }
-    setIsProcessing(false);
-    setTranscript("");
+  // Confirmer depuis le modal vocal
+  const confirmerVocal = () => {
+    const m = parseFloat(confirm.montant);
+    if (!m || m <= 0) return;
+    const dep = { id: Date.now(), montant: m, categorie: confirm.categorie, marchand: confirm.marchand, note: confirm.transcript, date: new Date().toISOString() };
+    updateDeps(prev => [dep, ...prev]);
+    setLastAdded(dep);
+    setConfirm(null);
+    setView("dashboard");
   };
 
+  // Ajouter manuel
   const ajouterManuel = () => {
-    const m = parseFloat(form.montant);
-    if (!m || m <= 0) return;
-    const nouvelle = { id: Date.now(), montant: m, categorie: form.categorie, marchand: form.marchand, note: form.note, date: new Date().toISOString() };
-    updateDepenses(prev => [nouvelle, ...prev]);
-    setLastAdded(nouvelle);
+    const m = parseFloat(form.montant); if (!m || m <= 0) return;
+    const dep = { id: Date.now(), montant: m, categorie: form.categorie, marchand: form.marchand, note: form.note, date: new Date().toISOString() };
+    updateDeps(prev => [dep, ...prev]);
+    setLastAdded(dep);
     setForm({ montant: "", categorie: "alimentation", marchand: "", note: "" });
     setView("dashboard");
   };
 
-  const supprimer = (id) => updateDepenses(prev => prev.filter(d => d.id !== id));
+  const supprimer = (id) => updateDeps(prev => prev.filter(d => d.id !== id));
 
-  // Styles communs
   const card = { background: "#fff", borderRadius: 14, padding: 16, marginBottom: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.05)" };
+
+  const CatGrid = ({ selected, onChange }) =>
+    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 } },
+      CATEGORIES.map(cat => React.createElement("button", {
+        key: cat.id, onClick: () => onChange(cat.id),
+        style: { padding: "8px 4px", borderRadius: 8, border: "1.5px solid", borderColor: selected === cat.id ? cat.color : "#eee", background: selected === cat.id ? cat.color + "22" : "#fff", cursor: "pointer", textAlign: "center" }
+      },
+        React.createElement("div", { style: { fontSize: 18 } }, cat.emoji),
+        React.createElement("div", { style: { fontSize: 9, marginTop: 2, fontWeight: 600, color: "#444", lineHeight: 1.2 } }, cat.label)
+      ))
+    );
 
   return React.createElement("div", { style: { fontFamily: "-apple-system, Inter, sans-serif", background: "#F8F6F3", minHeight: "100vh" } },
 
-    // Header
-    React.createElement("div", { style: { background: "#1C1C1E", padding: "env(safe-area-inset-top, 20px) 20px 16px", position: "sticky", top: 0, zIndex: 10 } },
+    // === HEADER ===
+    React.createElement("div", { style: { background: "#1C1C1E", padding: "20px 20px 14px", position: "sticky", top: 0, zIndex: 10 } },
       React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
         React.createElement("div", null,
           React.createElement("div", { style: { color: "#A1607D", fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" } }, "Mes dépenses"),
-          React.createElement("div", { style: { color: "#fff", fontSize: 20, fontWeight: 700, marginTop: 2 } },
-            now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" })
-          )
+          React.createElement("div", { style: { color: "#fff", fontSize: 20, fontWeight: 700, marginTop: 2 } }, now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }))
         ),
         React.createElement("div", { style: { textAlign: "right" } },
           React.createElement("div", { style: { color: "#666", fontSize: 10 } }, "ce mois"),
@@ -202,68 +195,40 @@ Si montant non trouvé, mets 0. Marchand vide si non mentionné. Note = 3 mots m
         React.createElement("div", { style: { color: "#555", fontSize: 10 } }, "Budget " + fmt(budget)),
         budgetEdit
           ? React.createElement("div", { style: { display: "flex", gap: 4, alignItems: "center" } },
-              React.createElement("input", {
-                type: "number", value: budgetInput, autoFocus: true,
-                onChange: e => setBudgetInput(e.target.value),
-                onKeyDown: e => { if (e.key === "Enter") saveBudget(budgetInput); if (e.key === "Escape") setBudgetEdit(false); },
-                style: { width: 80, padding: "2px 6px", fontSize: 11, borderRadius: 4, border: "1px solid #A1607D", background: "#2a2a2c", color: "#fff", outline: "none" }
-              }),
-              React.createElement("button", { onClick: () => saveBudget(budgetInput), style: { background: "#A1607D", border: "none", color: "#fff", borderRadius: 4, padding: "2px 6px", fontSize: 10, cursor: "pointer" } }, "OK"),
+              React.createElement("input", { type: "number", value: budgetInput, autoFocus: true, onChange: e => setBudgetInput(e.target.value), onKeyDown: e => { if (e.key === "Enter") saveBudget(budgetInput); if (e.key === "Escape") setBudgetEdit(false); }, style: { width: 80, padding: "2px 6px", fontSize: 11, borderRadius: 4, border: "1px solid #A1607D", background: "#2a2a2c", color: "#fff", outline: "none" } }),
+              React.createElement("button", { onClick: () => saveBudget(budgetInput), style: { background: "#A1607D", border: "none", color: "#fff", borderRadius: 4, padding: "2px 8px", fontSize: 10, cursor: "pointer" } }, "OK"),
               React.createElement("button", { onClick: () => setBudgetEdit(false), style: { background: "none", border: "none", color: "#666", fontSize: 14, cursor: "pointer" } }, "×")
             )
-          : React.createElement("button", {
-              onClick: () => { setBudgetInput(String(budget)); setBudgetEdit(true); },
-              style: { background: "none", border: "none", color: couleur, fontSize: 10, fontWeight: 700, cursor: "pointer", textDecoration: "underline dotted" }
-            }, Math.round(pct) + "% utilisé ✎")
+          : React.createElement("button", { onClick: () => { setBudgetInput(String(budget)); setBudgetEdit(true); }, style: { background: "none", border: "none", color: couleur, fontSize: 10, fontWeight: 700, cursor: "pointer", textDecoration: "underline dotted" } }, Math.round(pct) + "% utilisé ✎")
       )
     ),
 
-    // Notification
+    // === NOTIF ===
     lastAdded && React.createElement("div", { style: { margin: "10px 14px 0", background: "#E8F5E9", borderRadius: 10, padding: "9px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" } },
-      React.createElement("div", { style: { fontSize: 13, color: "#2E7D32" } },
-        "✓ ", React.createElement("strong", null, fmt(lastAdded.montant)), " ajouté — ", getCat(lastAdded.categorie).label
-      ),
+      React.createElement("div", { style: { fontSize: 13, color: "#2E7D32" } }, "✓ ", React.createElement("strong", null, fmt(lastAdded.montant)), " ajouté — ", getCat(lastAdded.categorie).label),
       React.createElement("button", { onClick: () => setLastAdded(null), style: { background: "none", border: "none", color: "#999", fontSize: 18, cursor: "pointer" } }, "×")
     ),
 
-    // Tabs
+    // === TABS ===
     React.createElement("div", { style: { display: "flex", padding: "12px 14px 0" } },
-      [
-        { id: "dashboard", label: "Vue d'ensemble" },
-        { id: "historique", label: "Historique" },
-        { id: "saisie", label: "+ Ajouter" },
-      ].map(tab => React.createElement("button", {
-        key: tab.id, onClick: () => setView(tab.id),
-        style: {
-          flex: 1, padding: "8px 2px", fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
-          borderBottom: view === tab.id ? "2px solid #A1607D" : "2px solid transparent",
-          background: "transparent", color: view === tab.id ? "#A1607D" : "#999", transition: "all 0.2s"
-        }
-      }, tab.label))
+      [{ id: "dashboard", label: "Vue d'ensemble" }, { id: "historique", label: "Historique" }, { id: "saisie", label: "+ Ajouter" }].map(tab =>
+        React.createElement("button", { key: tab.id, onClick: () => { setConfirm(null); setView(tab.id); }, style: { flex: 1, padding: "8px 2px", fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer", borderBottom: view === tab.id ? "2px solid #A1607D" : "2px solid transparent", background: "transparent", color: view === tab.id ? "#A1607D" : "#999" } }, tab.label)
+      )
     ),
 
-    // Contenu
     React.createElement("div", { style: { padding: 14 } },
 
       // === DASHBOARD ===
       view === "dashboard" && React.createElement("div", null,
-        // Bouton vocal central
+
+        // Bouton vocal
         React.createElement("div", { style: { textAlign: "center", margin: "10px 0 20px" } },
           React.createElement("button", {
-            onClick: startListening,
-            disabled: isListening || isProcessing,
+            onClick: startListening, disabled: isListening,
             className: isListening ? "pulsing" : "",
-            style: {
-              width: 76, height: 76, borderRadius: "50%",
-              background: isListening ? "#E07070" : isProcessing ? "#999" : "#A1607D",
-              border: "none", cursor: "pointer", fontSize: 28,
-              boxShadow: "0 4px 20px rgba(161,96,125,0.4)", transition: "background 0.3s"
-            }
-          }, isProcessing ? "⏳" : "🎙️"),
-          React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: "#888" } },
-            isListening ? "J'écoute..." : isProcessing ? "Analyse en cours..." : "Dis une dépense"
-          ),
-          transcript && React.createElement("div", { style: { marginTop: 4, fontSize: 11, color: "#A1607D", fontStyle: "italic" } }, "« " + transcript + " »")
+            style: { width: 76, height: 76, borderRadius: "50%", background: isListening ? "#A1607D" : "#A1607D", border: "none", cursor: "pointer", fontSize: 28, boxShadow: "0 4px 20px rgba(161,96,125,0.4)", transition: "all 0.3s" }
+          }, "🎙️"),
+          React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: "#888" } }, isListening ? "J'écoute... parle maintenant" : "Appuie et dis une dépense")
         ),
 
         // Répartition
@@ -298,10 +263,7 @@ Si montant non trouvé, mets 0. Marchand vide si non mentionné. Note = 3 mots m
                   React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#1C1C1E", flexShrink: 0 } }, fmt(d.montant))
                 );
               }),
-          depenses.length > 5 && React.createElement("button", {
-            onClick: () => setView("historique"),
-            style: { width: "100%", marginTop: 10, padding: 8, background: "none", border: "none", color: "#A1607D", fontSize: 12, fontWeight: 700, cursor: "pointer" }
-          }, "Voir tout →")
+          depenses.length > 5 && React.createElement("button", { onClick: () => setView("historique"), style: { width: "100%", marginTop: 10, padding: 8, background: "none", border: "none", color: "#A1607D", fontSize: 12, fontWeight: 700, cursor: "pointer" } }, "Voir tout →")
         )
       ),
 
@@ -317,7 +279,7 @@ Si montant non trouvé, mets 0. Marchand vide si non mentionné. Note = 3 mots m
                 React.createElement("div", { style: { flex: 1, minWidth: 0 } },
                   React.createElement("div", { style: { fontSize: 14, fontWeight: 600 } }, d.marchand || cat.label),
                   React.createElement("div", { style: { fontSize: 11, color: "#bbb" } }, fmtDate(d.date) + " · " + cat.label),
-                  d.note && React.createElement("div", { style: { fontSize: 11, color: "#ccc", fontStyle: "italic" } }, d.note)
+                  d.note && React.createElement("div", { style: { fontSize: 11, color: "#ccc", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, d.note)
                 ),
                 React.createElement("div", { style: { textAlign: "right", flexShrink: 0 } },
                   React.createElement("div", { style: { fontSize: 15, fontWeight: 700 } }, fmt(d.montant)),
@@ -329,63 +291,87 @@ Si montant non trouvé, mets 0. Marchand vide si non mentionné. Note = 3 mots m
 
       // === SAISIE ===
       view === "saisie" && React.createElement("div", null,
-        // Vocal
-        React.createElement("div", { style: { ...card, textAlign: "center" } },
-          React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 12 } }, "Saisie vocale"),
-          React.createElement("button", {
-            onClick: startListening, disabled: isListening || isProcessing,
-            className: isListening ? "pulsing" : "",
-            style: { width: 68, height: 68, borderRadius: "50%", background: isListening ? "#E07070" : isProcessing ? "#999" : "#A1607D", border: "none", cursor: "pointer", fontSize: 26, boxShadow: "0 4px 16px rgba(161,96,125,0.35)" }
-          }, isProcessing ? "⏳" : "🎙️"),
-          React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: "#999" } },
-            isListening ? "J'écoute..." : isProcessing ? "Analyse..." : "Ex: \"25€ d'essence Total\""
-          ),
-          transcript && React.createElement("div", { style: { marginTop: 4, fontSize: 11, color: "#A1607D" } }, "« " + transcript + " »")
-        ),
 
-        // Manuel
-        React.createElement("div", { style: card },
-          React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 14 } }, "Saisie manuelle"),
+        // === MODAL CONFIRMATION VOCAL ===
+        confirm && React.createElement("div", { style: { ...card, borderLeft: "3px solid #A1607D", marginBottom: 16 } },
+          React.createElement("div", { style: { fontSize: 11, color: "#A1607D", fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: 1 } }, "🎙️ Tu as dit"),
+          React.createElement("div", { style: { fontSize: 13, color: "#555", fontStyle: "italic", marginBottom: 14 } }, "« " + confirm.transcript + " »"),
+
           // Montant
           React.createElement("div", { style: { marginBottom: 12 } },
             React.createElement("label", { style: { fontSize: 11, color: "#888", display: "block", marginBottom: 4 } }, "Montant (€)"),
             React.createElement("input", {
-              type: "number", placeholder: "0.00", value: form.montant,
-              onChange: e => setForm({ ...form, montant: e.target.value }),
-              style: { width: "100%", padding: "10px 12px", border: "1.5px solid #eee", borderRadius: 8, fontSize: 16, fontWeight: 700 }
+              type: "number", value: confirm.montant || "", autoFocus: true,
+              onChange: e => setConfirm({ ...confirm, montant: e.target.value }),
+              style: { width: "100%", padding: "10px 12px", border: "1.5px solid #A1607D", borderRadius: 8, fontSize: 20, fontWeight: 800 }
             })
           ),
-          // Catégories
+
+          // Marchand
           React.createElement("div", { style: { marginBottom: 12 } },
-            React.createElement("label", { style: { fontSize: 11, color: "#888", display: "block", marginBottom: 6 } }, "Catégorie"),
+            React.createElement("label", { style: { fontSize: 11, color: "#888", display: "block", marginBottom: 4 } }, "Marchand"),
+            React.createElement("input", {
+              type: "text", value: confirm.marchand || "", placeholder: "Ex: Lidl, RATP...",
+              onChange: e => setConfirm({ ...confirm, marchand: e.target.value }),
+              style: { width: "100%", padding: "10px 12px", border: "1.5px solid #eee", borderRadius: 8, fontSize: 14 }
+            })
+          ),
+
+          // Catégorie
+          React.createElement("div", { style: { marginBottom: 16 } },
+            React.createElement("label", { style: { fontSize: 11, color: "#888", display: "block", marginBottom: 6 } }, "Catégorie détectée — modifie si besoin"),
             React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 } },
               CATEGORIES.map(cat => React.createElement("button", {
-                key: cat.id, onClick: () => setForm({ ...form, categorie: cat.id }),
-                style: {
-                  padding: "8px 4px", borderRadius: 8, border: "1.5px solid",
-                  borderColor: form.categorie === cat.id ? cat.color : "#eee",
-                  background: form.categorie === cat.id ? cat.color + "22" : "#fff",
-                  cursor: "pointer", textAlign: "center"
-                }
+                key: cat.id, onClick: () => setConfirm({ ...confirm, categorie: cat.id }),
+                style: { padding: "8px 4px", borderRadius: 8, border: "1.5px solid", borderColor: confirm.categorie === cat.id ? cat.color : "#eee", background: confirm.categorie === cat.id ? cat.color + "22" : "#fff", cursor: "pointer", textAlign: "center" }
               },
                 React.createElement("div", { style: { fontSize: 18 } }, cat.emoji),
                 React.createElement("div", { style: { fontSize: 9, marginTop: 2, fontWeight: 600, color: "#444", lineHeight: 1.2 } }, cat.label)
               ))
             )
           ),
-          // Marchand
+
+          React.createElement("div", { style: { display: "flex", gap: 8 } },
+            React.createElement("button", { onClick: () => setConfirm(null), style: { flex: 1, padding: 12, background: "#F0EDE9", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#888", cursor: "pointer" } }, "Annuler"),
+            React.createElement("button", { onClick: confirmerVocal, style: { flex: 2, padding: 12, background: "#A1607D", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "✓ Confirmer")
+          )
+        ),
+
+        // Vocal (si pas de confirm en cours)
+        !confirm && React.createElement("div", { style: { ...card, textAlign: "center" } },
+          React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 12 } }, "Saisie vocale"),
+          React.createElement("button", {
+            onClick: startListening, disabled: isListening,
+            className: isListening ? "pulsing" : "",
+            style: { width: 68, height: 68, borderRadius: "50%", background: "#A1607D", border: "none", cursor: "pointer", fontSize: 26, boxShadow: "0 4px 16px rgba(161,96,125,0.35)" }
+          }, "🎙️"),
+          React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: "#999" } }, isListening ? "J'écoute..." : "Ex: \"25€ d'essence chez Total\"")
+        ),
+
+        // Manuel
+        !confirm && React.createElement("div", { style: card },
+          React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 14 } }, "Saisie manuelle"),
+          React.createElement("div", { style: { marginBottom: 12 } },
+            React.createElement("label", { style: { fontSize: 11, color: "#888", display: "block", marginBottom: 4 } }, "Montant (€)"),
+            React.createElement("input", { type: "number", placeholder: "0.00", value: form.montant, onChange: e => setForm({ ...form, montant: e.target.value }), style: { width: "100%", padding: "10px 12px", border: "1.5px solid #eee", borderRadius: 8, fontSize: 16, fontWeight: 700 } })
+          ),
+          React.createElement("div", { style: { marginBottom: 12 } },
+            React.createElement("label", { style: { fontSize: 11, color: "#888", display: "block", marginBottom: 6 } }, "Catégorie"),
+            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 } },
+              CATEGORIES.map(cat => React.createElement("button", {
+                key: cat.id, onClick: () => setForm({ ...form, categorie: cat.id }),
+                style: { padding: "8px 4px", borderRadius: 8, border: "1.5px solid", borderColor: form.categorie === cat.id ? cat.color : "#eee", background: form.categorie === cat.id ? cat.color + "22" : "#fff", cursor: "pointer", textAlign: "center" }
+              },
+                React.createElement("div", { style: { fontSize: 18 } }, cat.emoji),
+                React.createElement("div", { style: { fontSize: 9, marginTop: 2, fontWeight: 600, color: "#444", lineHeight: 1.2 } }, cat.label)
+              ))
+            )
+          ),
           React.createElement("div", { style: { marginBottom: 14 } },
             React.createElement("label", { style: { fontSize: 11, color: "#888", display: "block", marginBottom: 4 } }, "Marchand (optionnel)"),
-            React.createElement("input", {
-              type: "text", placeholder: "Ex: Lidl, RATP...", value: form.marchand,
-              onChange: e => setForm({ ...form, marchand: e.target.value }),
-              style: { width: "100%", padding: "10px 12px", border: "1.5px solid #eee", borderRadius: 8, fontSize: 14 }
-            })
+            React.createElement("input", { type: "text", placeholder: "Ex: Lidl, RATP...", value: form.marchand, onChange: e => setForm({ ...form, marchand: e.target.value }), style: { width: "100%", padding: "10px 12px", border: "1.5px solid #eee", borderRadius: 8, fontSize: 14 } })
           ),
-          React.createElement("button", {
-            onClick: ajouterManuel,
-            style: { width: "100%", padding: 13, background: "#A1607D", color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer" }
-          }, "Ajouter cette dépense")
+          React.createElement("button", { onClick: ajouterManuel, style: { width: "100%", padding: 13, background: "#A1607D", color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer" } }, "Ajouter cette dépense")
         )
       )
     )
@@ -394,11 +380,8 @@ Si montant non trouvé, mets 0. Marchand vide si non mentionné. Note = 3 mots m
 
 ReactDOM.render(React.createElement(App), document.getElementById("root"));
 
-// Service Worker pour PWA
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
-  });
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
 </script>
 </body>
