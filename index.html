@@ -118,7 +118,7 @@ const getCat = (id) => CATEGORIES.find(c => c.id === id) || CATEGORIES[CATEGORIE
 
 // === SUPABASE ===
 const SB_URL = "https://fvbiiprbihrvubqvnkuf.supabase.co";
-const SB_KEY = "sb_publishable__D7WpJ5XkEuvvBCw5ZQ12w_p1C1SXtm";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ2YmlpcHJiaWhydnVicXZua3VmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MzUzMzksImV4cCI6MjA5NzAxMTMzOX0.ab_8DoiQcFvXvOUK2PFGwg8cW4e4MUxYX6F81z5U640";
 const sbHeaders = { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY };
 
 const sbFetch = async (path, opts = {}) => {
