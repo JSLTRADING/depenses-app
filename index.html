@@ -122,9 +122,10 @@ const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 const sbHeaders = { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY };
 
 const sbFetch = async (path, opts = {}) => {
-  const res = await fetch(SB_URL + path, { headers: sbHeaders, ...opts });
+  const res = await fetch(SB_URL + path, { headers: { ...sbHeaders, "Prefer": "return=minimal" }, ...opts });
   if (!res.ok) { const e = await res.text(); throw new Error(e); }
-  return res.status === 204 ? null : res.json();
+  const txt = await res.text();
+  return txt ? JSON.parse(txt) : null;
 };
 
 const BUDGET_KEY      = "depenses_budget_v1";
