@@ -29,7 +29,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script>
-const { useState, useRef, useCallback } = React;
+const { useState, useRef, useCallback, useEffect } = React;
 
 const CATEGORIES = [
   { id: "alimentation", label: "Alimentation",   emoji: "🛒", color: "#E8A87C" },
@@ -116,17 +116,27 @@ const fmt = (n) => new Intl.NumberFormat("fr-FR", { style: "currency", currency:
 const fmtDate = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
 const getCat = (id) => CATEGORIES.find(c => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
 
-const STORAGE_KEY   = "depenses_v1";
-const BUDGET_KEY    = "depenses_budget_v1";
+// === SUPABASE ===
+const SB_URL = "https://fvbiiprbihrvubqvnkuf.supabase.co";
+const SB_KEY = "sb_publishable__D7WpJ5XkEuvvBCw5ZQ12w_p1C1SXtm";
+const sbHeaders = { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY };
+
+const sbFetch = async (path, opts = {}) => {
+  const res = await fetch(SB_URL + path, { headers: sbHeaders, ...opts });
+  if (!res.ok) { const e = await res.text(); throw new Error(e); }
+  return res.status === 204 ? null : res.json();
+};
+
+const BUDGET_KEY      = "depenses_budget_v1";
 const BUDGETS_CAT_KEY = "depenses_budgets_cat_v1";
-const load  = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; } };
-const save  = (d) => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {} };
-const loadB = () => { try { return parseFloat(localStorage.getItem(BUDGET_KEY)) || 3000; } catch { return 3000; } };
+const loadB    = () => { try { return parseFloat(localStorage.getItem(BUDGET_KEY)) || 3000; } catch { return 3000; } };
 const loadBCat = () => { try { return JSON.parse(localStorage.getItem(BUDGETS_CAT_KEY)) || {}; } catch { return {}; } };
 const saveBCat = (b) => { try { localStorage.setItem(BUDGETS_CAT_KEY, JSON.stringify(b)); } catch {} };
 
 function App() {
-  const [depenses, setDepenses]     = useState(load);
+  const [depenses, setDepenses]     = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [syncing, setSyncing]       = useState(false);
   const [budget, setBudget]         = useState(loadB);
   const [budgetEdit, setBudgetEdit] = useState(false);
   const [budgetInput, setBudgetInput] = useState("");
@@ -152,9 +162,34 @@ function App() {
     setBudgetsCatEdit(prev => ({ ...prev, [catId]: false }));
   };
 
-  const updateDeps = useCallback((fn) => {
-    setDepenses(prev => { const next = typeof fn === "function" ? fn(prev) : fn; save(next); return next; });
+  // Charger depuis Supabase au démarrage
+  useEffect(() => {
+    sbFetch("/rest/v1/depenses?select=*&order=date.desc")
+      .then(data => { setDepenses(data || []); setLoading(false); })
+      .catch(() => setLoading(false));
   }, []);
+
+  const addToSupabase = async (dep) => {
+    setSyncing(true);
+    try {
+      await sbFetch("/rest/v1/depenses", {
+        method: "POST",
+        body: JSON.stringify({ id: dep.id, montant: dep.montant, categorie: dep.categorie, marchand: dep.marchand || "", note: dep.note || "", date: dep.date })
+      });
+      setDepenses(prev => [dep, ...prev]);
+      setLastAdded(dep);
+    } catch(e) { alert("Erreur de synchronisation. Vérifie ta connexion."); }
+    setSyncing(false);
+  };
+
+  const deleteFromSupabase = async (id) => {
+    setSyncing(true);
+    try {
+      await sbFetch("/rest/v1/depenses?id=eq." + id, { method: "DELETE" });
+      setDepenses(prev => prev.filter(d => d.id !== id));
+    } catch(e) { alert("Erreur lors de la suppression."); }
+    setSyncing(false);
+  };
 
   const saveBudget = (val) => {
     const n = parseFloat(val); if (!n || n <= 0) return;
@@ -196,8 +231,7 @@ function App() {
     if (!m || m <= 0) return;
     const normM = (s) => s ? s.trim().charAt(0).toUpperCase() + s.trim().slice(1).toLowerCase() : s;
     const dep = { id: Date.now(), montant: m, categorie: confirm.categorie, marchand: normM(confirm.marchand), note: confirm.transcript, date: new Date().toISOString() };
-    updateDeps(prev => [dep, ...prev]);
-    setLastAdded(dep);
+    addToSupabase(dep);
     setConfirm(null);
     setView("dashboard");
   };
@@ -207,13 +241,12 @@ function App() {
     const m = parseFloat(form.montant); if (!m || m <= 0) return;
     const normF = (s) => s ? s.trim().charAt(0).toUpperCase() + s.trim().slice(1).toLowerCase() : s;
     const dep = { id: Date.now(), montant: m, categorie: form.categorie, marchand: normF(form.marchand), note: form.note, date: new Date().toISOString() };
-    updateDeps(prev => [dep, ...prev]);
-    setLastAdded(dep);
+    addToSupabase(dep);
     setForm({ montant: "", categorie: "alimentation", marchand: "", note: "" });
     setView("dashboard");
   };
 
-  const supprimer = (id) => updateDeps(prev => prev.filter(d => d.id !== id));
+  const supprimer = (id) => deleteFromSupabase(id);
 
   const card = { background: "#fff", borderRadius: 14, padding: 16, marginBottom: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.05)" };
 
@@ -234,7 +267,7 @@ function App() {
     React.createElement("div", { style: { background: "#1C1C1E", padding: "20px 20px 14px", position: "sticky", top: 0, zIndex: 10 } },
       React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
         React.createElement("div", null,
-          React.createElement("div", { style: { color: "#A1607D", fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" } }, "Mes dépenses"),
+          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } }, React.createElement("div", { style: { color: "#A1607D", fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" } }, "Mes dépenses"), (syncing || loading) && React.createElement("div", { style: { fontSize: 9, color: "#666", fontStyle: "italic" } }, loading ? "chargement..." : "sync...")),
           React.createElement("div", { style: { color: "#fff", fontSize: 20, fontWeight: 700, marginTop: 2 } }, now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }))
         ),
         React.createElement("div", { style: { textAlign: "right" } },
@@ -263,14 +296,17 @@ function App() {
       React.createElement("button", { onClick: () => setLastAdded(null), style: { background: "none", border: "none", color: "#999", fontSize: 18, cursor: "pointer" } }, "×")
     ),
 
+    // === LOADING ===
+    loading && React.createElement("div", { style: { textAlign: "center", padding: 60, color: "#bbb", fontSize: 14 } }, "Chargement des dépenses..."),
+
     // === TABS ===
-    React.createElement("div", { style: { display: "flex", padding: "12px 14px 0" } },
+    !loading && React.createElement("div", { style: { display: "flex", padding: "12px 14px 0" } },
       [{ id: "dashboard", label: "Vue" }, { id: "historique", label: "Historique" }, { id: "budgets", label: "Budgets" }, { id: "saisie", label: "+ Ajouter" }].map(tab =>
         React.createElement("button", { key: tab.id, onClick: () => { setConfirm(null); setView(tab.id); }, style: { flex: 1, padding: "8px 2px", fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer", borderBottom: view === tab.id ? "2px solid #A1607D" : "2px solid transparent", background: "transparent", color: view === tab.id ? "#A1607D" : "#999" } }, tab.label)
       )
     ),
 
-    React.createElement("div", { style: { padding: 14 } },
+    !loading && React.createElement("div", { style: { padding: 14 } },
 
       // === DASHBOARD ===
       view === "dashboard" && React.createElement("div", null,
