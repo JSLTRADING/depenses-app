@@ -36,16 +36,17 @@ const CATEGORIES = [
   { id: "enfant",       label: "Enfant / École",  emoji: "🎒", color: "#A8D8EA" },
   { id: "transport",    label: "Transport",        emoji: "🚗", color: "#7EC8C8" },
   { id: "coaching",     label: "Coaching / Pro",   emoji: "💼", color: "#A1607D" },
-  { id: "maison",       label: "Maison / Jardin",  emoji: "🏡", color: "#B5D5C5" },
-  { id: "mode",         label: "Mode / Vinted",    emoji: "👗", color: "#D4A5C9" },
+  { id: "maison",       label: "Maison",           emoji: "🏡", color: "#B5D5C5" },
+  { id: "mode",         label: "Mode",             emoji: "👗", color: "#D4A5C9" },
   { id: "loisirs",      label: "Loisirs",           emoji: "🎮", color: "#F7C59F" },
   { id: "sante",        label: "Santé",             emoji: "💊", color: "#C9E4CA" },
+  { id: "restaurant",   label: "Restaurant",        emoji: "🍽️", color: "#F4A261" },
   { id: "autres",       label: "Autres",            emoji: "📦", color: "#D0CDD7" },
 ];
 
 // Mots-clés pour catégorisation automatique locale
 const CAT_KEYWORDS = {
-  alimentation: ["monoprix","franprix","lidl","aldi","carrefour","leclerc","intermarché","super u","casino","courses","épicerie","boulangerie","boucherie","marché","picard","biocoop","naturalia","sushi","restaurant","café","bistrot","mcdo","mcdonald","burger","pizza","kebab","déjeuner","diner","petit-déjeuner","repas","nourriture","manger"],
+  alimentation: ["monoprix","franprix","lidl","aldi","carrefour","leclerc","intermarché","super u","casino","courses","épicerie","boulangerie","boucherie","marché","picard","biocoop","naturalia","sushi","snack","sandwicherie","mcdo","mcdonald","burger","pizza","kebab","déjeuner","diner","petit-déjeuner","repas","nourriture","manger"],
   enfant: ["école","crèche","nourrice","babysitter","jouet","jeux","kid","enfant","maternelle","primaire","cantine","garderie","activité","dessin","sport enfant","zara kids","jacadi","dpam","kiabi enfant"],
   transport: ["navigo","ratp","sncf","train","métro","bus","tram","taxi","uber","bolt","essence","carburant","gazole","total","esso","bp","shell","parking","péage","autoroute","vélib","trottin"],
   coaching: ["formation","coaching","cabinet","bilan","cpf","linkedin","matériel bureau","fournitures","pro","professionnel","abonnement pro","logiciel"],
@@ -53,6 +54,7 @@ const CAT_KEYWORDS = {
   mode: ["vêtement","chaussure","sac","zara","h&m","mango","shein","asos","primark","balenciaga","louboutin","vinted","mode","accessoire","bijou"],
   loisirs: ["cinéma","théâtre","concert","musée","netflix","disney","spotify","jeux vidéo","livre","amazon","fnac","sport","fitness","salle","abonnement","vacances","voyage","hôtel","airbnb","restaurant","bar","sortie","loisir"],
   sante: ["pharmacie","médecin","docteur","dentiste","kiné","ophtalmo","mutuelle","ordonnance","médicament","santé","clinique","hôpital","infirmier","ostéo","psy"],
+  restaurant: ["restaurant","brasserie","bistrot","café","bisto","sushi","ramen","pizzeria","trattoria","gastronomique","déjeuner au","diner au","dîner au","addition","terrasse","uber eats","deliveroo","just eat","doordash"],
 };
 
 const guessCategorie = (text) => {
