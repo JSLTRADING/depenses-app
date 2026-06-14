@@ -99,6 +99,10 @@ function App() {
   const [confirm, setConfirm]       = useState(null); // { transcript, montant, marchand, categorie }
   const [form, setForm]             = useState({ montant: "", categorie: "alimentation", marchand: "", note: "" });
   const [lastAdded, setLastAdded]   = useState(null);
+  const [expandedCat, setExpandedCat] = useState(null);
+  const [histoMois, setHistoMois] = useState(() => {
+    const n = new Date(); return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2,"0");
+  });
   const recRef = useRef(null);
 
   const updateDeps = useCallback((fn) => {
@@ -236,15 +240,43 @@ function App() {
           React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "#1C1C1E", marginBottom: 14 } }, "Répartition du mois"),
           parCat.length === 0
             ? React.createElement("div", { style: { color: "#bbb", fontSize: 13, textAlign: "center", padding: "16px 0" } }, "Aucune dépense ce mois")
-            : parCat.map(cat => React.createElement("div", { key: cat.id, style: { marginBottom: 10 } },
-                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 4 } },
-                  React.createElement("div", { style: { fontSize: 13, color: "#333" } }, cat.emoji + " " + cat.label),
-                  React.createElement("div", { style: { fontSize: 13, fontWeight: 700 } }, fmt(cat.total))
-                ),
-                React.createElement("div", { style: { background: "#F0EDE9", borderRadius: 4, height: 5, overflow: "hidden" } },
-                  React.createElement("div", { style: { width: (cat.total / totalMois * 100) + "%", background: cat.color, height: "100%", borderRadius: 4 } })
-                )
-              ))
+            : parCat.map(cat => {
+                const isOpen = expandedCat === cat.id;
+                // Marchands pour cette catégorie ce mois
+                const marchands = {};
+                moisDeps.filter(d => d.categorie === cat.id).forEach(d => {
+                  const m = d.marchand || "Sans nom";
+                  marchands[m] = (marchands[m] || 0) + d.montant;
+                });
+                const marchandList = Object.entries(marchands).sort((a,b) => b[1]-a[1]);
+                return React.createElement("div", { key: cat.id, style: { marginBottom: 10 } },
+                  // Ligne catégorie cliquable
+                  React.createElement("button", {
+                    onClick: () => setExpandedCat(isOpen ? null : cat.id),
+                    style: { width: "100%", background: "none", border: "none", cursor: "pointer", padding: 0 }
+                  },
+                    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } },
+                      React.createElement("div", { style: { fontSize: 13, color: "#333" } }, cat.emoji + " " + cat.label),
+                      React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                        React.createElement("div", { style: { fontSize: 13, fontWeight: 700 } }, fmt(cat.total)),
+                        React.createElement("div", { style: { fontSize: 10, color: "#bbb", transition: "transform 0.2s", transform: isOpen ? "rotate(180deg)" : "rotate(0deg)" } }, "▾")
+                      )
+                    ),
+                    React.createElement("div", { style: { background: "#F0EDE9", borderRadius: 4, height: 5, overflow: "hidden" } },
+                      React.createElement("div", { style: { width: (cat.total / totalMois * 100) + "%", background: cat.color, height: "100%", borderRadius: 4 } })
+                    )
+                  ),
+                  // Détail marchands (accordéon)
+                  isOpen && marchandList.length > 0 && React.createElement("div", { style: { marginTop: 8, paddingLeft: 10, borderLeft: "2px solid " + cat.color } },
+                    marchandList.map(([nom, total]) =>
+                      React.createElement("div", { key: nom, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", borderBottom: "1px solid #F5F2EF" } },
+                        React.createElement("div", { style: { fontSize: 12, color: "#555" } }, nom),
+                        React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "#333" } }, fmt(total))
+                      )
+                    )
+                  )
+                );
+              })
         ),
 
         // Dernières
@@ -269,24 +301,58 @@ function App() {
 
       // === HISTORIQUE ===
       view === "historique" && React.createElement("div", null,
-        React.createElement("div", { style: { fontSize: 12, color: "#999", marginBottom: 12 } }, depenses.length + " dépense" + (depenses.length > 1 ? "s" : "") + " au total"),
-        depenses.length === 0
-          ? React.createElement("div", { style: { ...card, textAlign: "center", color: "#bbb", padding: 32 } }, "Aucune dépense enregistrée")
-          : depenses.map(d => {
-              const cat = getCat(d.categorie);
-              return React.createElement("div", { key: d.id, style: { ...card, marginBottom: 8, display: "flex", alignItems: "center", gap: 12, padding: 12 } },
-                React.createElement("div", { style: { width: 40, height: 40, borderRadius: 10, background: cat.color + "33", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 } }, cat.emoji),
-                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
-                  React.createElement("div", { style: { fontSize: 14, fontWeight: 600 } }, d.marchand || cat.label),
-                  React.createElement("div", { style: { fontSize: 11, color: "#bbb" } }, fmtDate(d.date) + " · " + cat.label),
-                  d.note && React.createElement("div", { style: { fontSize: 11, color: "#ccc", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, d.note)
-                ),
-                React.createElement("div", { style: { textAlign: "right", flexShrink: 0 } },
-                  React.createElement("div", { style: { fontSize: 15, fontWeight: 700 } }, fmt(d.montant)),
-                  React.createElement("button", { onClick: () => supprimer(d.id), style: { background: "none", border: "none", color: "#ddd", fontSize: 18, cursor: "pointer" } }, "×")
-                )
-              );
-            })
+
+        // Sélecteur de mois
+        (() => {
+          // Générer la liste des mois distincts dans les dépenses + mois courant
+          const moisSet = new Set(depenses.map(d => { const dt = new Date(d.date); return dt.getFullYear() + "-" + String(dt.getMonth()+1).padStart(2,"0"); }));
+          const now2 = new Date();
+          moisSet.add(now2.getFullYear() + "-" + String(now2.getMonth()+1).padStart(2,"0"));
+          const moisList = Array.from(moisSet).sort((a,b) => b.localeCompare(a));
+          const fmtMoisLabel = (ym) => { const [y,m] = ym.split("-"); return new Date(y, m-1, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" }); };
+          const depFiltrees = depenses.filter(d => { const dt = new Date(d.date); const ym = dt.getFullYear() + "-" + String(dt.getMonth()+1).padStart(2,"0"); return ym === histoMois; });
+          const totalFiltré = depFiltrees.reduce((s,d) => s + d.montant, 0);
+          const idxCourant = moisList.indexOf(histoMois);
+
+          return React.createElement("div", null,
+            // Nav mois
+            React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 } },
+              React.createElement("button", {
+                onClick: () => { if (idxCourant < moisList.length - 1) setHistoMois(moisList[idxCourant + 1]); },
+                disabled: idxCourant >= moisList.length - 1,
+                style: { background: "none", border: "none", fontSize: 20, cursor: "pointer", color: idxCourant >= moisList.length - 1 ? "#ddd" : "#A1607D", padding: "0 8px" }
+              }, "‹"),
+              React.createElement("div", { style: { textAlign: "center" } },
+                React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#1C1C1E", textTransform: "capitalize" } }, fmtMoisLabel(histoMois)),
+                React.createElement("div", { style: { fontSize: 12, color: "#A1607D", fontWeight: 700 } }, fmt(totalFiltré) + " · " + depFiltrees.length + " dépense" + (depFiltrees.length > 1 ? "s" : ""))
+              ),
+              React.createElement("button", {
+                onClick: () => { if (idxCourant > 0) setHistoMois(moisList[idxCourant - 1]); },
+                disabled: idxCourant <= 0,
+                style: { background: "none", border: "none", fontSize: 20, cursor: "pointer", color: idxCourant <= 0 ? "#ddd" : "#A1607D", padding: "0 8px" }
+              }, "›"),
+            ),
+
+            // Liste dépenses du mois sélectionné
+            depFiltrees.length === 0
+              ? React.createElement("div", { style: { ...card, textAlign: "center", color: "#bbb", padding: 32 } }, "Aucune dépense ce mois")
+              : depFiltrees.map(d => {
+                  const cat = getCat(d.categorie);
+                  return React.createElement("div", { key: d.id, style: { ...card, marginBottom: 8, display: "flex", alignItems: "center", gap: 12, padding: 12 } },
+                    React.createElement("div", { style: { width: 40, height: 40, borderRadius: 10, background: cat.color + "33", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 } }, cat.emoji),
+                    React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                      React.createElement("div", { style: { fontSize: 14, fontWeight: 600 } }, d.marchand || cat.label),
+                      React.createElement("div", { style: { fontSize: 11, color: "#bbb" } }, fmtDate(d.date) + " · " + cat.label),
+                      d.note && React.createElement("div", { style: { fontSize: 11, color: "#ccc", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, d.note)
+                    ),
+                    React.createElement("div", { style: { textAlign: "right", flexShrink: 0 } },
+                      React.createElement("div", { style: { fontSize: 15, fontWeight: 700 } }, fmt(d.montant)),
+                      React.createElement("button", { onClick: () => supprimer(d.id), style: { background: "none", border: "none", color: "#ddd", fontSize: 18, cursor: "pointer" } }, "×")
+                    )
+                  );
+                })
+          );
+        })()
       ),
 
       // === SAISIE ===
