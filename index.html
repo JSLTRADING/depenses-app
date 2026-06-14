@@ -65,17 +65,50 @@ const guessCategorie = (text) => {
 
 // Extraction locale : montant + marchand depuis le texte vocal
 const extraireDepense = (text) => {
-  // Montant : cherche patterns comme "25€", "25 euros", "25,50", "2.50"
-  const montantRe = /(\d+[\.,]\d+|\d+)\s*(?:€|euros?|euro)/i;
-  const match = text.match(montantRe);
-  const montant = match ? parseFloat(match[1].replace(",", ".")) : 0;
+  const t = text.trim();
 
-  // Marchand : mot(s) après "chez" / "à" / "au" / "chez" ou avant le montant
+  // Montant : gère tous les formats vocaux courants
+  let montant = 0;
+  // Pattern 1 : "3,80€" "3.80 euros"
+  const m1 = t.match(/(\d+)[,\.](\d+)\s*(?:€|euros?)/i);
+  if (m1) { montant = parseFloat(m1[1] + "." + m1[2]); }
+  else {
+    // Pattern 2 : "3 euros 80" → entier + centimes séparés
+    const m2 = t.match(/(\d+)\s*(?:€|euros?)\s*(\d+)/i);
+    if (m2) { montant = parseFloat(m2[1] + "." + m2[2].padEnd(2,"0")); }
+    else {
+      // Pattern 3 : "3€" "25 euros" sans centimes
+      const m3 = t.match(/(\d+)\s*(?:€|euros?)/i);
+      if (m3) { montant = parseFloat(m3[1]); }
+      else {
+        // Pattern 4 : "20 centimes" "0,20 centime"
+        const m4 = t.match(/(\d+)[,\.](\d+)\s*centimes?/i);
+        if (m4) { montant = parseFloat("0." + m4[2]); }
+        else {
+          const m5 = t.match(/(\d+)\s*centimes?/i);
+          if (m5) { montant = parseFloat(m5[1]) / 100; }
+        }
+      }
+    }
+  }
+
+  // Marchand : après "chez / à / au / chez le / chez la" ou nom connu en début/fin
   let marchand = "";
-  const chezMatch = text.match(/(?:chez|à|au|chez le?|chez la?)\s+([A-Za-zÀ-ÿ\s]+?)(?:\s+pour|\s+\d|$)/i);
-  if (chezMatch) marchand = chezMatch[1].trim();
+  const chezMatch = t.match(/(?:chez|à l['']|au|chez l['']|chez le|chez la)\s+([A-Za-zÀ-ÿ'\-\s]+?)(?:\s+pour|\s+\d|\s*€|$)/i);
+  if (chezMatch) {
+    marchand = chezMatch[1].trim();
+  } else {
+    // Cherche un nom de marchand connu directement dans le texte
+    const ENSEIGNES = ["intermarché","intermarch","monoprix","franprix","lidl","aldi","carrefour","leclerc","super u","casino","picard","biocoop","naturalia","ikea","leroy merlin","castorama","total","esso","shell","bp","sncf","ratp","navigo","amazon","fnac","decathlon","zara","h&m","mango","mc do","mcdonald","burger king","pizza"];
+    for (const e of ENSEIGNES) {
+      if (t.toLowerCase().includes(e)) {
+        marchand = e.charAt(0).toUpperCase() + e.slice(1);
+        break;
+      }
+    }
+  }
 
-  const categorie = guessCategorie(text);
+  const categorie = guessCategorie(t);
   return { montant, marchand, categorie };
 };
 
