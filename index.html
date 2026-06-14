@@ -54,6 +54,7 @@ const fmtDate = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "2-digit",
 const getCat = (id) => CATEGORIES.find(c => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
 
 const STORAGE_KEY = "depenses_v1";
+const BUDGET_KEY = "depenses_budget_v1";
 const loadDepenses = () => {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
   catch { return []; }
@@ -61,9 +62,16 @@ const loadDepenses = () => {
 const saveDepenses = (d) => {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {}
 };
+const loadBudget = () => {
+  try { return parseFloat(localStorage.getItem(BUDGET_KEY)) || 3000; }
+  catch { return 3000; }
+};
 
 function App() {
   const [depenses, setDepenses] = useState(loadDepenses);
+  const [budget, setBudget] = useState(loadBudget);
+  const [budgetEdit, setBudgetEdit] = useState(false);
+  const [budgetInput, setBudgetInput] = useState("");
   const [view, setView] = useState("dashboard");
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -71,6 +79,14 @@ function App() {
   const [lastAdded, setLastAdded] = useState(null);
   const [form, setForm] = useState({ montant: "", categorie: "alimentation", marchand: "", note: "" });
   const recRef = useRef(null);
+
+  const saveBudget = (val) => {
+    const n = parseFloat(val);
+    if (!n || n <= 0) return;
+    setBudget(n);
+    try { localStorage.setItem(BUDGET_KEY, String(n)); } catch {}
+    setBudgetEdit(false);
+  };
 
   const updateDepenses = useCallback((fn) => {
     setDepenses(prev => {
@@ -86,7 +102,7 @@ function App() {
     return dt.getMonth() === now.getMonth() && dt.getFullYear() === now.getFullYear();
   });
   const totalMois = moisDepenses.reduce((s, d) => s + d.montant, 0);
-  const pct = Math.min((totalMois / BUDGET_MENSUEL) * 100, 100);
+  const pct = Math.min((totalMois / budget) * 100, 100);
   const couleur = pct > 90 ? "#E07070" : pct > 70 ? "#E8A87C" : "#7EC8C8";
 
   const parCat = CATEGORIES.map(cat => ({
@@ -103,6 +119,245 @@ function App() {
     rec.interimResults = false;
     rec.onstart = () => setIsListening(true);
     rec.onresult = (e) => {
+      const text = e.results[0][0].transcript;
+      setTranscript(text);
+      analyser(text);
+    };
+    rec.onerror = rec.onend = () => setIsListening(false);
+    recRef.current = rec;
+    rec.start();
+  };
+
+  const analyser = async (text) => {
+    setIsProcessing(true);
+    setIsListening(false);
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 500,
+          messages: [{ role: "user", content: `Analyse cette dépense et réponds UNIQUEMENT en JSON valide sans markdown :
+{"montant":number,"categorie":"alimentation|enfant|transport|coaching|maison|mode|loisirs|sante|autres","marchand":"string","note":"string","date":"${today}"}
+
+Dépense : "${text}"
+Si montant non trouvé, mets 0. Marchand vide si non mentionné. Note = 3 mots max.` }]
+        })
+      });
+      const data = await res.json();
+      const txt = data.content?.[0]?.text || "";
+      const parsed = JSON.parse(txt.trim());
+      if (parsed.montant > 0) {
+        const nouvelle = { id: Date.now(), ...parsed };
+        updateDepenses(prev => [nouvelle, ...prev]);
+        setLastAdded(nouvelle);
+        setView("dashboard");
+      } else {
+        alert("Je n'ai pas pu extraire le montant. Essaie avec \"J'ai payé 25€ chez Lidl\".");
+      }
+    } catch(e) {
+      alert("Erreur lors de l'analyse. Réessaie.");
+    }
+    setIsProcessing(false);
+    setTranscript("");
+  };
+
+  const ajouterManuel = () => {
+    const m = parseFloat(form.montant);
+    if (!m || m <= 0) return;
+    const nouvelle = { id: Date.now(), montant: m, categorie: form.categorie, marchand: form.marchand, note: form.note, date: new Date().toISOString() };
+    updateDepenses(prev => [nouvelle, ...prev]);
+    setLastAdded(nouvelle);
+    setForm({ montant: "", categorie: "alimentation", marchand: "", note: "" });
+    setView("dashboard");
+  };
+
+  const supprimer = (id) => updateDepenses(prev => prev.filter(d => d.id !== id));
+
+  // Styles communs
+  const card = { background: "#fff", borderRadius: 14, padding: 16, marginBottom: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.05)" };
+
+  return React.createElement("div", { style: { fontFamily: "-apple-system, Inter, sans-serif", background: "#F8F6F3", minHeight: "100vh" } },
+
+    // Header
+    React.createElement("div", { style: { background: "#1C1C1E", padding: "env(safe-area-inset-top, 20px) 20px 16px", position: "sticky", top: 0, zIndex: 10 } },
+      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+        React.createElement("div", null,
+          React.createElement("div", { style: { color: "#A1607D", fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" } }, "Mes dépenses"),
+          React.createElement("div", { style: { color: "#fff", fontSize: 20, fontWeight: 700, marginTop: 2 } },
+            now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" })
+          )
+        ),
+        React.createElement("div", { style: { textAlign: "right" } },
+          React.createElement("div", { style: { color: "#666", fontSize: 10 } }, "ce mois"),
+          React.createElement("div", { style: { color: "#fff", fontSize: 22, fontWeight: 800 } }, fmt(totalMois))
+        )
+      ),
+      React.createElement("div", { style: { marginTop: 12, background: "#333", borderRadius: 6, height: 6, overflow: "hidden" } },
+        React.createElement("div", { style: { width: pct + "%", background: couleur, height: "100%", borderRadius: 6, transition: "width 0.5s" } })
+      ),
+      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginTop: 4 } },
+        React.createElement("div", { style: { color: "#555", fontSize: 10 } }, "Budget " + fmt(budget)),
+        budgetEdit
+          ? React.createElement("div", { style: { display: "flex", gap: 4, alignItems: "center" } },
+              React.createElement("input", {
+                type: "number", value: budgetInput, autoFocus: true,
+                onChange: e => setBudgetInput(e.target.value),
+                onKeyDown: e => { if (e.key === "Enter") saveBudget(budgetInput); if (e.key === "Escape") setBudgetEdit(false); },
+                style: { width: 80, padding: "2px 6px", fontSize: 11, borderRadius: 4, border: "1px solid #A1607D", background: "#2a2a2c", color: "#fff", outline: "none" }
+              }),
+              React.createElement("button", { onClick: () => saveBudget(budgetInput), style: { background: "#A1607D", border: "none", color: "#fff", borderRadius: 4, padding: "2px 6px", fontSize: 10, cursor: "pointer" } }, "OK"),
+              React.createElement("button", { onClick: () => setBudgetEdit(false), style: { background: "none", border: "none", color: "#666", fontSize: 14, cursor: "pointer" } }, "×")
+            )
+          : React.createElement("button", {
+              onClick: () => { setBudgetInput(String(budget)); setBudgetEdit(true); },
+              style: { background: "none", border: "none", color: couleur, fontSize: 10, fontWeight: 700, cursor: "pointer", textDecoration: "underline dotted" }
+            }, Math.round(pct) + "% utilisé ✎")
+      )
+    ),
+
+    // Notification
+    lastAdded && React.createElement("div", { style: { margin: "10px 14px 0", background: "#E8F5E9", borderRadius: 10, padding: "9px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" } },
+      React.createElement("div", { style: { fontSize: 13, color: "#2E7D32" } },
+        "✓ ", React.createElement("strong", null, fmt(lastAdded.montant)), " ajouté — ", getCat(lastAdded.categorie).label
+      ),
+      React.createElement("button", { onClick: () => setLastAdded(null), style: { background: "none", border: "none", color: "#999", fontSize: 18, cursor: "pointer" } }, "×")
+    ),
+
+    // Tabs
+    React.createElement("div", { style: { display: "flex", padding: "12px 14px 0" } },
+      [
+        { id: "dashboard", label: "Vue d'ensemble" },
+        { id: "historique", label: "Historique" },
+        { id: "saisie", label: "+ Ajouter" },
+      ].map(tab => React.createElement("button", {
+        key: tab.id, onClick: () => setView(tab.id),
+        style: {
+          flex: 1, padding: "8px 2px", fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
+          borderBottom: view === tab.id ? "2px solid #A1607D" : "2px solid transparent",
+          background: "transparent", color: view === tab.id ? "#A1607D" : "#999", transition: "all 0.2s"
+        }
+      }, tab.label))
+    ),
+
+    // Contenu
+    React.createElement("div", { style: { padding: 14 } },
+
+      // === DASHBOARD ===
+      view === "dashboard" && React.createElement("div", null,
+        // Bouton vocal central
+        React.createElement("div", { style: { textAlign: "center", margin: "10px 0 20px" } },
+          React.createElement("button", {
+            onClick: startListening,
+            disabled: isListening || isProcessing,
+            className: isListening ? "pulsing" : "",
+            style: {
+              width: 76, height: 76, borderRadius: "50%",
+              background: isListening ? "#E07070" : isProcessing ? "#999" : "#A1607D",
+              border: "none", cursor: "pointer", fontSize: 28,
+              boxShadow: "0 4px 20px rgba(161,96,125,0.4)", transition: "background 0.3s"
+            }
+          }, isProcessing ? "⏳" : "🎙️"),
+          React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: "#888" } },
+            isListening ? "J'écoute..." : isProcessing ? "Analyse en cours..." : "Dis une dépense"
+          ),
+          transcript && React.createElement("div", { style: { marginTop: 4, fontSize: 11, color: "#A1607D", fontStyle: "italic" } }, "« " + transcript + " »")
+        ),
+
+        // Répartition
+        React.createElement("div", { style: card },
+          React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "#1C1C1E", marginBottom: 14 } }, "Répartition du mois"),
+          parCat.length === 0
+            ? React.createElement("div", { style: { color: "#bbb", fontSize: 13, textAlign: "center", padding: "16px 0" } }, "Aucune dépense ce mois")
+            : parCat.map(cat => React.createElement("div", { key: cat.id, style: { marginBottom: 10 } },
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 4 } },
+                  React.createElement("div", { style: { fontSize: 13, color: "#333" } }, cat.emoji + " " + cat.label),
+                  React.createElement("div", { style: { fontSize: 13, fontWeight: 700 } }, fmt(cat.total))
+                ),
+                React.createElement("div", { style: { background: "#F0EDE9", borderRadius: 4, height: 5, overflow: "hidden" } },
+                  React.createElement("div", { style: { width: (cat.total / totalMois * 100) + "%", background: cat.color, height: "100%", borderRadius: 4 } })
+                )
+              ))
+        ),
+
+        // Dernières
+        React.createElement("div", { style: card },
+          React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "#1C1C1E", marginBottom: 12 } }, "Dernières saisies"),
+          depenses.length === 0
+            ? React.createElement("div", { style: { color: "#bbb", fontSize: 13, textAlign: "center", padding: "16px 0" } }, "Appuie sur 🎙️ pour commencer")
+            : depenses.slice(0, 5).map(d => {
+                const cat = getCat(d.categorie);
+                return React.createElement("div", { key: d.id, style: { display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid #F5F2EF" } },
+                  React.createElement("div", { style: { width: 36, height: 36, borderRadius: 10, background: cat.color + "33", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 } }, cat.emoji),
+                  React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                    React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: "#1C1C1E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, d.marchand || cat.label),
+                    React.createElement("div", { style: { fontSize: 11, color: "#bbb" } }, fmtDate(d.date) + " · " + cat.label)
+                  ),
+                  React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#1C1C1E", flexShrink: 0 } }, fmt(d.montant))
+                );
+              }),
+          depenses.length > 5 && React.createElement("button", {
+            onClick: () => setView("historique"),
+            style: { width: "100%", marginTop: 10, padding: 8, background: "none", border: "none", color: "#A1607D", fontSize: 12, fontWeight: 700, cursor: "pointer" }
+          }, "Voir tout →")
+        )
+      ),
+
+      // === HISTORIQUE ===
+      view === "historique" && React.createElement("div", null,
+        React.createElement("div", { style: { fontSize: 12, color: "#999", marginBottom: 12 } }, depenses.length + " dépense" + (depenses.length > 1 ? "s" : "") + " au total"),
+        depenses.length === 0
+          ? React.createElement("div", { style: { ...card, textAlign: "center", color: "#bbb", padding: 32 } }, "Aucune dépense enregistrée")
+          : depenses.map(d => {
+              const cat = getCat(d.categorie);
+              return React.createElement("div", { key: d.id, style: { ...card, marginBottom: 8, display: "flex", alignItems: "center", gap: 12, padding: 12 } },
+                React.createElement("div", { style: { width: 40, height: 40, borderRadius: 10, background: cat.color + "33", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 } }, cat.emoji),
+                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                  React.createElement("div", { style: { fontSize: 14, fontWeight: 600 } }, d.marchand || cat.label),
+                  React.createElement("div", { style: { fontSize: 11, color: "#bbb" } }, fmtDate(d.date) + " · " + cat.label),
+                  d.note && React.createElement("div", { style: { fontSize: 11, color: "#ccc", fontStyle: "italic" } }, d.note)
+                ),
+                React.createElement("div", { style: { textAlign: "right", flexShrink: 0 } },
+                  React.createElement("div", { style: { fontSize: 15, fontWeight: 700 } }, fmt(d.montant)),
+                  React.createElement("button", { onClick: () => supprimer(d.id), style: { background: "none", border: "none", color: "#ddd", fontSize: 18, cursor: "pointer" } }, "×")
+                )
+              );
+            })
+      ),
+
+      // === SAISIE ===
+      view === "saisie" && React.createElement("div", null,
+        // Vocal
+        React.createElement("div", { style: { ...card, textAlign: "center" } },
+          React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 12 } }, "Saisie vocale"),
+          React.createElement("button", {
+            onClick: startListening, disabled: isListening || isProcessing,
+            className: isListening ? "pulsing" : "",
+            style: { width: 68, height: 68, borderRadius: "50%", background: isListening ? "#E07070" : isProcessing ? "#999" : "#A1607D", border: "none", cursor: "pointer", fontSize: 26, boxShadow: "0 4px 16px rgba(161,96,125,0.35)" }
+          }, isProcessing ? "⏳" : "🎙️"),
+          React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: "#999" } },
+            isListening ? "J'écoute..." : isProcessing ? "Analyse..." : "Ex: \"25€ d'essence Total\""
+          ),
+          transcript && React.createElement("div", { style: { marginTop: 4, fontSize: 11, color: "#A1607D" } }, "« " + transcript + " »")
+        ),
+
+        // Manuel
+        React.createElement("div", { style: card },
+          React.createElement("div", { style: { fontSize: 13, fontWeight: 700, marginBottom: 14 } }, "Saisie manuelle"),
+          // Montant
+          React.createElement("div", { style: { marginBottom: 12 } },
+            React.createElement("label", { style: { fontSize: 11, color: "#888", display: "block", marginBottom: 4 } }, "Montant (€)"),
+            React.createElement("input", {
+              type: "number", placeholder: "0.00", value: form.montant,
+              onChange: e => setForm({ ...form, montant: e.target.value }),
+              style: { width: "100%", padding: "10px 12px", border: "1.5px solid #eee", borderRadius: 8, fontSize: 16, fontWeight: 700 }
+            })
+          ),
+          // Catégories
+          React.createElement("div", { style: { marginBottom: 12 } },
+          rec.onresult = (e) => {
       const text = e.results[0][0].transcript;
       setTranscript(text);
       analyser(text);
