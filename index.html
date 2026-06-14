@@ -116,11 +116,14 @@ const fmt = (n) => new Intl.NumberFormat("fr-FR", { style: "currency", currency:
 const fmtDate = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
 const getCat = (id) => CATEGORIES.find(c => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
 
-const STORAGE_KEY = "depenses_v1";
-const BUDGET_KEY  = "depenses_budget_v1";
+const STORAGE_KEY   = "depenses_v1";
+const BUDGET_KEY    = "depenses_budget_v1";
+const BUDGETS_CAT_KEY = "depenses_budgets_cat_v1";
 const load  = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; } };
 const save  = (d) => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {} };
 const loadB = () => { try { return parseFloat(localStorage.getItem(BUDGET_KEY)) || 3000; } catch { return 3000; } };
+const loadBCat = () => { try { return JSON.parse(localStorage.getItem(BUDGETS_CAT_KEY)) || {}; } catch { return {}; } };
+const saveBCat = (b) => { try { localStorage.setItem(BUDGETS_CAT_KEY, JSON.stringify(b)); } catch {} };
 
 function App() {
   const [depenses, setDepenses]     = useState(load);
@@ -136,7 +139,18 @@ function App() {
   const [histoMois, setHistoMois] = useState(() => {
     const n = new Date(); return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2,"0");
   });
+  const [budgetsCat, setBudgetsCat] = useState(loadBCat);
+  const [budgetsCatEdit, setBudgetsCatEdit] = useState({});
   const recRef = useRef(null);
+
+  const saveBudgetCat = (catId, val) => {
+    const n = parseFloat(val);
+    const next = { ...budgetsCat };
+    if (!n || n <= 0) { delete next[catId]; } else { next[catId] = n; }
+    setBudgetsCat(next);
+    saveBCat(next);
+    setBudgetsCatEdit(prev => ({ ...prev, [catId]: false }));
+  };
 
   const updateDeps = useCallback((fn) => {
     setDepenses(prev => { const next = typeof fn === "function" ? fn(prev) : fn; save(next); return next; });
@@ -251,7 +265,7 @@ function App() {
 
     // === TABS ===
     React.createElement("div", { style: { display: "flex", padding: "12px 14px 0" } },
-      [{ id: "dashboard", label: "Vue d'ensemble" }, { id: "historique", label: "Historique" }, { id: "saisie", label: "+ Ajouter" }].map(tab =>
+      [{ id: "dashboard", label: "Vue" }, { id: "historique", label: "Historique" }, { id: "budgets", label: "Budgets" }, { id: "saisie", label: "+ Ajouter" }].map(tab =>
         React.createElement("button", { key: tab.id, onClick: () => { setConfirm(null); setView(tab.id); }, style: { flex: 1, padding: "8px 2px", fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer", borderBottom: view === tab.id ? "2px solid #A1607D" : "2px solid transparent", background: "transparent", color: view === tab.id ? "#A1607D" : "#999" } }, tab.label)
       )
     ),
@@ -301,6 +315,15 @@ function App() {
                     ),
                     React.createElement("div", { style: { background: "#F0EDE9", borderRadius: 4, height: 5, overflow: "hidden" } },
                       React.createElement("div", { style: { width: (cat.total / totalMois * 100) + "%", background: cat.color, height: "100%", borderRadius: 4 } })
+                    ),
+                    budgetsCat[cat.id] && React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", marginTop: 3 } },
+                      (() => {
+                        const pctCat = Math.round((cat.total / budgetsCat[cat.id]) * 100);
+                        const coul = pctCat > 100 ? "#E07070" : pctCat > 80 ? "#E8A87C" : "#7EC8C8";
+                        return React.createElement("div", { style: { fontSize: 10, color: coul, fontWeight: 700 } },
+                          pctCat > 100 ? "⚠️ " : "", pctCat + "% du budget " + fmt(budgetsCat[cat.id])
+                        );
+                      })()
                     )
                   ),
                   // Détail marchands (accordéon)
@@ -399,6 +422,56 @@ function App() {
                 })
           );
         })()
+      ),
+
+      // === BUDGETS PAR CATÉGORIE ===
+      view === "budgets" && React.createElement("div", null,
+        React.createElement("div", { style: { fontSize: 12, color: "#999", marginBottom: 14 } }, "Définis un budget mensuel par catégorie. Une alerte s'affiche si tu dépasses."),
+        CATEGORIES.map(cat => {
+          const depCat = moisDeps.filter(d => d.categorie === cat.id).reduce((s,d) => s + d.montant, 0);
+          const budCat = budgetsCat[cat.id] || 0;
+          const pctCat = budCat > 0 ? Math.min((depCat / budCat) * 100, 100) : 0;
+          const coulCat = pctCat > 100 ? "#E07070" : pctCat > 80 ? "#E8A87C" : "#7EC8C8";
+          const isEditing = budgetsCatEdit[cat.id];
+          return React.createElement("div", { key: cat.id, style: { ...card, marginBottom: 10, padding: 14 } },
+            React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: budCat > 0 ? 10 : 0 } },
+              React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                React.createElement("div", { style: { fontSize: 22 } }, cat.emoji),
+                React.createElement("div", null,
+                  React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "#1C1C1E" } }, cat.label),
+                  React.createElement("div", { style: { fontSize: 11, color: "#aaa" } }, depCat > 0 ? "Dépensé : " + fmt(depCat) : "Aucune dépense ce mois")
+                )
+              ),
+              isEditing
+                ? React.createElement("div", { style: { display: "flex", gap: 4, alignItems: "center" } },
+                    React.createElement("input", {
+                      type: "number", placeholder: "0", autoFocus: true,
+                      defaultValue: budCat || "",
+                      id: "budcat-" + cat.id,
+                      style: { width: 80, padding: "4px 8px", fontSize: 13, borderRadius: 6, border: "1.5px solid #A1607D", outline: "none" },
+                      onKeyDown: e => { if (e.key === "Enter") saveBudgetCat(cat.id, e.target.value); if (e.key === "Escape") setBudgetsCatEdit(p => ({...p, [cat.id]: false})); }
+                    }),
+                    React.createElement("button", { onClick: () => { const v = document.getElementById("budcat-"+cat.id).value; saveBudgetCat(cat.id, v); }, style: { background: "#A1607D", border: "none", color: "#fff", borderRadius: 6, padding: "4px 8px", fontSize: 11, cursor: "pointer" } }, "OK"),
+                    React.createElement("button", { onClick: () => setBudgetsCatEdit(p => ({...p, [cat.id]: false})), style: { background: "none", border: "none", color: "#bbb", fontSize: 16, cursor: "pointer" } }, "×")
+                  )
+                : React.createElement("button", {
+                    onClick: () => setBudgetsCatEdit(p => ({...p, [cat.id]: true})),
+                    style: { background: budCat > 0 ? "#F0EDE9" : "#A1607D22", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, color: budCat > 0 ? "#555" : "#A1607D", cursor: "pointer" }
+                  }, budCat > 0 ? fmt(budCat) + " ✎" : "+ Budget")
+            ),
+            budCat > 0 && React.createElement("div", null,
+              React.createElement("div", { style: { background: "#F0EDE9", borderRadius: 4, height: 6, overflow: "hidden", marginBottom: 4 } },
+                React.createElement("div", { style: { width: pctCat + "%", background: coulCat, height: "100%", borderRadius: 4, transition: "width 0.4s" } })
+              ),
+              React.createElement("div", { style: { display: "flex", justifyContent: "space-between" } },
+                React.createElement("div", { style: { fontSize: 10, color: coulCat, fontWeight: 700 } },
+                  pctCat >= 100 ? "⚠️ Dépassé de " + fmt(depCat - budCat) : Math.round(pctCat) + "% utilisé"
+                ),
+                React.createElement("div", { style: { fontSize: 10, color: "#aaa" } }, "Reste : " + fmt(Math.max(budCat - depCat, 0)))
+              )
+            )
+          );
+        })
       ),
 
       // === SAISIE ===
