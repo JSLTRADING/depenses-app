@@ -134,7 +134,8 @@ function App() {
       setIsListening(false);
       const extracted = extraireDepense(text);
       // Ouvre le formulaire de confirmation pré-rempli
-      setConfirm({ transcript: text, ...extracted });
+      const norm = (s) => s ? s.trim().charAt(0).toUpperCase() + s.trim().slice(1).toLowerCase() : s;
+      setConfirm({ transcript: text, ...extracted, marchand: norm(extracted.marchand) });
       setView("saisie");
     };
     rec.onerror = rec.onend = () => setIsListening(false);
@@ -146,7 +147,8 @@ function App() {
   const confirmerVocal = () => {
     const m = parseFloat(confirm.montant);
     if (!m || m <= 0) return;
-    const dep = { id: Date.now(), montant: m, categorie: confirm.categorie, marchand: confirm.marchand, note: confirm.transcript, date: new Date().toISOString() };
+    const normM = (s) => s ? s.trim().charAt(0).toUpperCase() + s.trim().slice(1).toLowerCase() : s;
+    const dep = { id: Date.now(), montant: m, categorie: confirm.categorie, marchand: normM(confirm.marchand), note: confirm.transcript, date: new Date().toISOString() };
     updateDeps(prev => [dep, ...prev]);
     setLastAdded(dep);
     setConfirm(null);
@@ -156,7 +158,8 @@ function App() {
   // Ajouter manuel
   const ajouterManuel = () => {
     const m = parseFloat(form.montant); if (!m || m <= 0) return;
-    const dep = { id: Date.now(), montant: m, categorie: form.categorie, marchand: form.marchand, note: form.note, date: new Date().toISOString() };
+    const normF = (s) => s ? s.trim().charAt(0).toUpperCase() + s.trim().slice(1).toLowerCase() : s;
+    const dep = { id: Date.now(), montant: m, categorie: form.categorie, marchand: normF(form.marchand), note: form.note, date: new Date().toISOString() };
     updateDeps(prev => [dep, ...prev]);
     setLastAdded(dep);
     setForm({ montant: "", categorie: "alimentation", marchand: "", note: "" });
@@ -245,7 +248,8 @@ function App() {
                 // Marchands pour cette catégorie ce mois
                 const marchands = {};
                 moisDeps.filter(d => d.categorie === cat.id).forEach(d => {
-                  const m = d.marchand || "Sans nom";
+                  const raw = (d.marchand || "Sans nom").trim();
+                  const m = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
                   marchands[m] = (marchands[m] || 0) + d.montant;
                 });
                 const marchandList = Object.entries(marchands).sort((a,b) => b[1]-a[1]);
