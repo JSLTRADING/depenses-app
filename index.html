@@ -178,7 +178,7 @@ function App() {
       });
       setDepenses(prev => [dep, ...prev]);
       setLastAdded(dep);
-    } catch(e) { alert("Erreur de synchronisation. Vérifie ta connexion."); }
+    } catch(e) { alert("Erreur sync : " + e.message); }
     setSyncing(false);
   };
 
